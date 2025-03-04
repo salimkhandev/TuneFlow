@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useRef, useState } from "react";
-import { Search, Music, Menu } from "lucide-react";
+import React, { useCallback, useState } from "react";
+import { Search, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModeToggle } from "../mode-toggler/ModeToggler";
@@ -10,26 +10,138 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { debounce } from "lodash";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-  CommandShortcut,
-} from "@/components/ui/command";
+  fetchPlaylists,
+  fetchSongs,
+  fetchArtists,
+  fetchAlbums,
+} from "@/lib/utils";
+import Loader from "../loader/Loader";
+import { SongList } from "../song-list/SongList";
+import { PlaylistCard } from "../playlist-card/PlaylistCard";
+import { ArtistCard } from "../artist-card/ArtistCard";
+import AlbumsList from "../albums-list/AlbumsList";
 
 const Header = () => {
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  // Search-related states
   const [query, setQuery] = useState("");
   const [isOpenSearchDialog, setIsOpenSearchDialog] = useState(false);
+  const [limit] = useState(10);
+
+  // Loading states
+  const [isLoadingSongs, setIsLoadingSongs] = useState(false);
+  const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
+  const [isLoadingArtists, setIsLoadingArtists] = useState(false);
+  const [isLoadingAlbums, setIsLoadingAlbums] = useState(false);
+
+  // Results states
+  const [songs, setSongs] = useState([]);
+  const [playlists, setPlaylists] = useState([]);
+  const [artists, setArtists] = useState([]);
+  const [albums, setAlbums] = useState([]);
+
+  // Fetch songs
+  const handleFetchSongs = useCallback(
+    async (searchQuery) => {
+      setIsLoadingSongs(true);
+      try {
+        const songsResponse = await fetchSongs({ query: searchQuery, limit });
+        setSongs(songsResponse?.data?.results || []);
+      } catch (error) {
+        console.error("Error fetching songs:", error);
+        setSongs([]);
+      } finally {
+        setIsLoadingSongs(false);
+      }
+    },
+    [limit]
+  );
+
+  // Fetch playlists
+  const handleFetchPlaylists = useCallback(
+    async (searchQuery) => {
+      setIsLoadingPlaylists(true);
+      try {
+        const playlistsResponse = await fetchPlaylists({
+          query: searchQuery,
+          limit,
+        });
+        setPlaylists(playlistsResponse?.data?.results || []);
+      } catch (error) {
+        console.error("Error fetching playlists:", error);
+        setPlaylists([]);
+      } finally {
+        setIsLoadingPlaylists(false);
+      }
+    },
+    [limit]
+  );
+
+  // Fetch artists
+  const handleFetchArtists = useCallback(
+    async (searchQuery) => {
+      setIsLoadingArtists(true);
+      try {
+        const artistsResponse = await fetchArtists({
+          query: searchQuery,
+          limit,
+        });
+        setArtists(artistsResponse?.data?.results || []);
+      } catch (error) {
+        console.error("Error fetching artists:", error);
+        setArtists([]);
+      } finally {
+        setIsLoadingArtists(false);
+      }
+    },
+    [limit]
+  );
+
+  // Fetch albums
+  const handleFetchAlbums = useCallback(
+    async (searchQuery) => {
+      setIsLoadingAlbums(true);
+      try {
+        const albumsResponse = await fetchAlbums({ query: searchQuery, limit });
+        setAlbums(albumsResponse?.data?.results || []);
+      } catch (error) {
+        console.error("Error fetching albums:", error);
+        setAlbums([]);
+      } finally {
+        setIsLoadingAlbums(false);
+      }
+    },
+    [limit]
+  );
+
+  // Debounced search across all categories
+  const debouncedSearch = useCallback(
+    debounce((searchQuery) => {
+      if (searchQuery.trim()) {
+        handleFetchSongs(searchQuery);
+        handleFetchPlaylists(searchQuery);
+        handleFetchArtists(searchQuery);
+        handleFetchAlbums(searchQuery);
+      } else {
+        // Reset all results if query is empty
+        setSongs([]);
+        setPlaylists([]);
+        setArtists([]);
+        setAlbums([]);
+      }
+    }, 300),
+    [
+      handleFetchSongs,
+      handleFetchPlaylists,
+      handleFetchArtists,
+      handleFetchAlbums,
+    ]
+  );
 
   return (
     <header className="flex flex-col md:flex-row items-center justify-between p-3 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -76,45 +188,90 @@ const Header = () => {
 
       <Dialog
         open={isOpenSearchDialog}
-        onOpenChange={() => setIsOpenSearchDialog(false)}
+        onOpenChange={() => {
+          setIsOpenSearchDialog(false);
+          setQuery("");
+          // Reset all results when dialog closes
+          setSongs([]);
+          setPlaylists([]);
+          setArtists([]);
+          setAlbums([]);
+        }}
         className="md:min-w-[450px]"
       >
-        <DialogContent className="sm:max-w-3xl p-0">
-          <DialogHeader className={"p-3"}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
             <DialogTitle>Search</DialogTitle>
             <DialogDescription>
               Search songs, artists, or playlists...
             </DialogDescription>
           </DialogHeader>
-          <Command className="">
-            <CommandInput placeholder="Type songs, artists, or playlists or search..." />
-            <CommandList>
-              <CommandEmpty>No results found.</CommandEmpty>
-              <CommandGroup heading="Songs">
-                <CommandItem>
-                  <span>Calendar</span>
-                </CommandItem>
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup heading="Playlists">
-                <CommandItem>
-                  <span>Calendar</span>
-                </CommandItem>
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup heading="Artists">
-                <CommandItem>
-                  <span>Calendar</span>
-                </CommandItem>
-              </CommandGroup>
-              <CommandSeparator />
-              <CommandGroup heading="Albums">
-                <CommandItem>
-                  <span>Calendar</span>
-                </CommandItem>
-              </CommandGroup>
-            </CommandList>
-          </Command>
+          <Input
+            placeholder="Type songs, artists, or playlists or search..."
+            value={query}
+            onChange={(e) => {
+              const searchQuery = e.target.value;
+              setQuery(searchQuery);
+              debouncedSearch(searchQuery);
+            }}
+          />
+          <ScrollArea className="h-80 flex flex-col gap-4">
+            {/* Songs Section */}
+            <div className="flex flex-col gap-2">
+              <h1 className="font-semibold">Songs</h1>
+              {isLoadingSongs ? (
+                <Loader />
+              ) : (
+                <SongList songs={songs} grid={true} />
+              )}
+              {!isLoadingSongs && songs?.length === 0 && (
+                <p className="text-center">No songs found</p>
+              )}
+            </div>
+
+            {/* Playlists Section */}
+            <div className="flex flex-col gap-2">
+              <h1 className="font-semibold">Playlists</h1>
+              {isLoadingPlaylists ? (
+                <Loader />
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {playlists?.map((playlist, i) => (
+                    <PlaylistCard key={playlist.id || i} playlist={playlist} />
+                  ))}
+                </div>
+              )}
+              {!isLoadingPlaylists && playlists?.length === 0 && (
+                <p className="text-center">No playlists found</p>
+              )}
+            </div>
+
+            {/* Artists Section */}
+            <div className="flex flex-col gap-2">
+              <h1 className="font-semibold">Artists</h1>
+              {isLoadingArtists ? (
+                <Loader />
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {artists?.map((artist, i) => (
+                    <ArtistCard key={i} artist={artist} />
+                  ))}
+                </div>
+              )}
+              {!isLoadingArtists && artists?.length === 0 && (
+                <p className="text-center">No artists found</p>
+              )}
+            </div>
+
+            {/* Albums Section */}
+            <div className="flex flex-col gap-2">
+              <h1 className="font-semibold">Albums</h1>
+              {isLoadingAlbums ? <Loader /> : <AlbumsList albums={albums} />}
+              {!isLoadingAlbums && albums?.length === 0 && (
+                <p className="text-center">No albums found</p>
+              )}
+            </div>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </header>
